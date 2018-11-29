@@ -11,35 +11,48 @@ path = '../'
 
 w2v_path = path + 'data/w2v'
 
+# 复赛原始数据
 train = pd.read_csv(path + '/train_2.csv')
 test = pd.read_csv(path + '/test_2.csv')
 
+# stacking特征
 train_stacking = pd.read_csv(path + 'data/stack/train.csv')
 test_stacking = pd.read_csv(path + 'data/stack/test.csv')
 
+# 合并数据
 print(len(train), len(test))
 train = train.merge(train_stacking, 'left', 'user_id')
 test = test.merge(test_stacking, 'left', 'user_id')
 print(len(train), len(test))
 
+# 初赛数据
 train_first = pd.read_csv(path + '/train_all.csv')
+
+# data_type标记初赛和复赛数据
 train['data_type'] = 0
 test['data_type'] = 0
 train_first['data_type'] = 1
+
+# 合并训练集和测试集，label=0为测试集
 data = pd.concat([train, test], ignore_index=True).fillna(0)
 train_first = train_first.fillna(0)
 data['label'] = data.current_service.astype(int)
 data = data.replace('\\N', 0)
 train_first = train_first.replace('\\N', 0)
+
+#性别类型
 data['gender'] = data.gender.astype(int)
 train_first['gender'] = train_first.gender.astype(int)
 
+
 data.loc[data['service_type'] == 3, 'service_type'] = 4
 
+# 类别型特征名
 origin_cate_feature = ['service_type', 'complaint_level', 'contract_type', 'gender', 'is_mix_service',
                        'is_promise_low_consume',
                        'many_over_bill', 'net_service']
 
+# 数值型特征名
 origin_num_feature = ['1_total_fee', '2_total_fee', '3_total_fee', '4_total_fee',
                       'age', 'contract_time',
                       'former_complaint_fee', 'former_complaint_num',
@@ -49,6 +62,7 @@ for i in origin_num_feature:
     data[i] = data[i].astype(float)
     train_first[i] = train_first[i].astype(float)
 
+# 记下问w2v特征名
 w2v_features = []
 for col in ['1_total_fee', '2_total_fee', '3_total_fee', '4_total_fee']:
     df = pd.read_csv(w2v_path + '/' + col + '.csv')
@@ -57,13 +71,12 @@ for col in ['1_total_fee', '2_total_fee', '3_total_fee', '4_total_fee']:
     fs.remove(col)
     w2v_features += fs
     print(len(data))
+    # 插入问w2v特征
     data = pd.merge(data, df, on=col, how='left')
-    print(len(data))
 print(w2v_features)
 
+# 统计特征
 count_feature_list = []
-
-
 def feature_count(data, features=[]):
     if len(set(features)) != len(features):
         print('equal feature !!!!')
@@ -164,6 +177,7 @@ lgb_model = lgb.LGBMClassifier(
     subsample=0.9, colsample_bytree=0.5, subsample_freq=1,
     learning_rate=0.03, random_state=2018, n_jobs=10
 )
+# 将data中的训练数据进行训练，训练service_type=1的数据
 lgb_model.fit(data[data.label != 0][feature], data[data.label != 0].label, categorical_feature=cate_feature, verbose=True)
 result_type1 = pd.DataFrame()
 result_type1['user_id'] = data[(data.label == 0) & (data.service_type == 1)]['user_id']
@@ -180,12 +194,16 @@ def f1_macro(preds, labels):
 X = data[(data.label != 0) & (data.label != 999999)][feature].reset_index(drop=True)
 y = data[(data.label != 0) & (data.label != 999999)].label.reset_index(drop=True)
 
+# 将label转换成current_service
 label2current_service = dict(
     zip(range(0, len(set(y))), sorted(list(set(y)))))
+# 将current_service转换成label
 current_service2label = dict(
     zip(sorted(list(set(y))), range(0, len(set(y)))))
 
 cv_pred = []
+
+# 分层采样
 skf = StratifiedKFold(n_splits=5, random_state=20181, shuffle=True)
 for index, (train_index, test_index) in enumerate(skf.split(X, y)):
     print(index)
@@ -197,6 +215,7 @@ for index, (train_index, test_index) in enumerate(skf.split(X, y)):
     )
     train_x, test_x, train_y, test_y = X.loc[train_index], X.loc[test_index], y.loc[train_index], y.loc[test_index]
 
+# 训练service_type=4的数据
     train_x = train_x[train_x.service_type == 4]
     train_y = train_y[(train_x.service_type == 4).index]
     test_x = test_x[test_x.service_type == 4]
@@ -206,7 +225,9 @@ for index, (train_index, test_index) in enumerate(skf.split(X, y)):
     eval_set = [(test_x, test_y)]
     lgb_model.fit(train_x, train_y, categorical_feature=cate_feature)
     y_test = lgb_model.predict(data[(data.label == 0) & (data.service_type != 1)][feature])
+    # 预测的current_service转换成label， 其实是为了用bincount投票
     y_test = pd.Series(y_test).map(current_service2label)
+    # 把每一折验证集的预测结果合并
     if index == 0:
         cv_pred = np.array(y_test).reshape(-1, 1)
     else:
@@ -214,15 +235,20 @@ for index, (train_index, test_index) in enumerate(skf.split(X, y)):
 
 submit = []
 for line in cv_pred:
+    # 对5折的结果进行投票，票数最多的就归那一类
     submit.append(np.argmax(np.bincount(line)))
+
 result = pd.DataFrame()
 result['user_id'] = data[(data.label == 0) & (data.service_type != 1)]['user_id']
 result['predict'] = submit
+# 反转换成current_service
 result['predict'] = result['predict'].map(label2current_service)
+
 result.loc[result['user_id'] == '4VNcD6kE0sjnAvFX', 'predict'] = 999999
+
+# 合并结果
 result = result.append(result_type1)
 
 print(len(result), result.predict.value_counts())
 print(result.sort_values('user_id').head())
-result[['user_id', 'predict']].to_csv(
-    path + '/sub.csv', index=False)
+result[['user_id', 'predict']].to_csv(path + '/sub.csv', index=False)
