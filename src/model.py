@@ -7,15 +7,15 @@ from sklearn.model_selection import StratifiedKFold
 import numpy as np
 from sklearn.metrics import f1_score
 
-path = './'
+path = '../'
 
-w2v_path = path + '/w2v'
+w2v_path = path + 'data/w2v'
 
 train = pd.read_csv(path + '/train_2.csv')
 test = pd.read_csv(path + '/test_2.csv')
 
-train_stacking = pd.read_csv(path + '/stack/train.csv')
-test_stacking = pd.read_csv(path + '/stack/test.csv')
+train_stacking = pd.read_csv(path + 'data/stack/train.csv')
+test_stacking = pd.read_csv(path + 'data/stack/test.csv')
 
 print(len(train), len(test))
 train = train.merge(train_stacking, 'left', 'user_id')
@@ -157,14 +157,14 @@ for i in num_feature:
 feature = cate_feature + num_feature
 
 print(len(feature), feature)
-
+print('model training......')
 lgb_model = lgb.LGBMClassifier(
     boosting_type="gbdt", num_leaves=152, reg_alpha=0, reg_lambda=0.,
-    max_depth=-1, n_estimators=1000, objective='multiclass', class_weight='balanced',
+    max_depth=-1, n_estimators=200, objective='multiclass', class_weight='balanced',
     subsample=0.9, colsample_bytree=0.5, subsample_freq=1,
     learning_rate=0.03, random_state=2018, n_jobs=10
 )
-lgb_model.fit(data[data.label != 0][feature], data[data.label != 0].label, categorical_feature=cate_feature)
+lgb_model.fit(data[data.label != 0][feature], data[data.label != 0].label, categorical_feature=cate_feature, verbose=True)
 result_type1 = pd.DataFrame()
 result_type1['user_id'] = data[(data.label == 0) & (data.service_type == 1)]['user_id']
 result_type1['predict'] = lgb_model.predict(data[(data.label == 0) & (data.service_type == 1)][feature])

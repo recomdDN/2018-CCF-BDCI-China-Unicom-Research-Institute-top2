@@ -5,6 +5,10 @@
 # @File    : w2v_feature.py
 # @Software: PyCharm
 
+'''
+目的：将每个用户当前月及前3个月的花费数值利用word2vec转换成为向量特征
+'''
+
 # 预处理复赛数据
 import os
 import pandas as pd
@@ -18,15 +22,17 @@ import numpy as np
 
 L = 10
 
-path = './'
-save_path = path + '/w2v'
+path = '../'
+save_path = path + 'data/w2v'
 if not os.path.exists(save_path):
     print(save_path)
     os.makedirs(save_path)
 
-train1 = pd.read_csv(path + '/train_all.csv')
-train = pd.read_csv(path + '/train_2.csv')
-test = pd.read_csv(path + '/test_2.csv')
+print(os.getcwd())
+
+train1 = pd.read_csv(path + 'train_all.csv')
+train = pd.read_csv(path + 'train_2.csv')
+test = pd.read_csv(path + 'test_2.csv')
 
 data = pd.concat([train, test, train1]).reset_index(drop=True).sample(frac=1, random_state=2018).fillna(0)
 data = data.replace('\\N', 999)
@@ -43,6 +49,7 @@ for fea in ['1_total_fee', '2_total_fee', '3_total_fee', '4_total_fee']:
     values = []
     for line in list(data[fea].values):
         values.append(line)
+    # 某列去重
     values = set(values)
     print(len(values))
     w2v = []
